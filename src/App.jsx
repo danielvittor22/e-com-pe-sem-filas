@@ -37,10 +37,21 @@ export default function App() {
   };
 
   // 🔊 SOM
-  const playSound = () => {
-    alertSound.currentTime = 0;
-    alertSound.play();
-  };
+function playSound() {
+  if (typeof window === "undefined") return;
+
+  const audio = new Audio("/sounds/alert.mp3");
+  audio.currentTime = 0;
+  audio.volume = 0.8;
+
+  audio.play().catch(() => {
+    console.log("Som bloqueado até interação do usuário.");
+  });
+
+  if (navigator.vibrate) {
+    navigator.vibrate(200);
+  }
+}
 
   // 🚗 PAI CLICOU "ESTOU CHEGANDO"
   const handleChegando = () => {
