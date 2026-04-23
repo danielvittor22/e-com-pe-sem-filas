@@ -150,11 +150,16 @@ export default function App() {
   }
 
   function markArrived(id) {
-    updateStudent(id, { status: "chegou" });
+    updateStudent(id, {
+      status: "chegou",
+    });
   }
 
   function markPickedUp(id) {
-    updateStudent(id, { status: "retirado", eta: "" });
+    updateStudent(id, {
+      status: "retirado",
+      eta: "",
+    });
   }
 
   return (
