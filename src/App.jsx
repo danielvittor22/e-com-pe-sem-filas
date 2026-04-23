@@ -7,6 +7,7 @@ const initialStudents = [
     className: "Maternal II",
     status: "aguardando",
     responsible: "Pai do Gabriel",
+    plate: "",
     eta: "",
     updatedAt: "--:--",
   },
@@ -16,6 +17,7 @@ const initialStudents = [
     className: "Jardim I",
     status: "a_caminho",
     responsible: "Mãe da Helena",
+    plate: "BRA2E19",
     eta: "10 min",
     updatedAt: "17:05",
   },
@@ -25,6 +27,7 @@ const initialStudents = [
     className: "Jardim II",
     status: "retirado",
     responsible: "Van Escolar Sol",
+    plate: "XYZ-1234",
     eta: "",
     updatedAt: "16:58",
   },
@@ -93,6 +96,7 @@ export default function App() {
 
   const [parentStudentId, setParentStudentId] = useState(initialStudents[0].id);
   const [parentResponsible, setParentResponsible] = useState("Pai do Gabriel");
+  const [parentPlate, setParentPlate] = useState("");
   const [delayMinutes, setDelayMinutes] = useState("10 min");
   const [delayNote, setDelayNote] = useState("");
 
@@ -117,7 +121,8 @@ export default function App() {
       (s) =>
         s.name.toLowerCase().includes(q) ||
         s.className.toLowerCase().includes(q) ||
-        s.responsible.toLowerCase().includes(q)
+        s.responsible.toLowerCase().includes(q) ||
+        (s.plate || "").toLowerCase().includes(q)
     );
   }, [students, schoolSearch]);
 
@@ -131,21 +136,27 @@ export default function App() {
 
   function handleImComing() {
     if (!selectedStudent) return;
+
     updateStudent(selectedStudent.id, {
       status: "a_caminho",
       responsible: parentResponsible || "Responsável",
+      plate: parentPlate,
       eta: "Chegando agora",
     });
+
     alert("Aviso enviado para a escola.");
   }
 
   function handleDelay() {
     if (!selectedStudent) return;
+
     updateStudent(selectedStudent.id, {
       status: "atrasado",
       responsible: parentResponsible || "Responsável",
+      plate: parentPlate,
       eta: delayMinutes,
     });
+
     alert(`Atraso informado${delayNote ? `: ${delayNote}` : "."}`);
   }
 
@@ -280,6 +291,24 @@ export default function App() {
                 />
               </div>
 
+              <div style={{ marginTop: 16 }}>
+                <label style={{ fontWeight: 700, display: "block", marginBottom: 8 }}>
+                  Placa do veículo
+                </label>
+                <input
+                  value={parentPlate}
+                  onChange={(e) => setParentPlate(e.target.value.toUpperCase())}
+                  placeholder="ABC-1234 ou ABC1D23"
+                  style={{
+                    width: "100%",
+                    padding: 12,
+                    borderRadius: 12,
+                    border: "1px solid #d1d5db",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
               <button
                 onClick={handleImComing}
                 style={{
@@ -359,6 +388,9 @@ export default function App() {
                     <strong>Responsável:</strong> {selectedStudent.responsible}
                   </p>
                   <p>
+                    <strong>Placa:</strong> {selectedStudent.plate || "—"}
+                  </p>
+                  <p>
                     <strong>Status:</strong>{" "}
                     <span style={badgeStyle(selectedStudent.status)}>
                       {statusLabel[selectedStudent.status]}
@@ -396,7 +428,7 @@ export default function App() {
               <input
                 value={schoolSearch}
                 onChange={(e) => setSchoolSearch(e.target.value)}
-                placeholder="Buscar aluno, turma ou responsável"
+                placeholder="Buscar aluno, turma, responsável ou placa"
                 style={{
                   width: 320,
                   maxWidth: "100%",
@@ -444,6 +476,10 @@ export default function App() {
 
                   <div style={{ color: "#334155" }}>
                     <strong>Responsável:</strong> {student.responsible}
+                  </div>
+
+                  <div style={{ color: "#334155" }}>
+                    <strong>Placa:</strong> {student.plate || "—"}
                   </div>
 
                   <div style={{ color: "#334155" }}>
