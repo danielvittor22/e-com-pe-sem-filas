@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-
+import logo from "./logo.png";
 const initialStudents = [
   {
     id: 1,
