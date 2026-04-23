@@ -52,6 +52,20 @@ function nowTime() {
   });
 }
 
+function playAlertSound() {
+  const audio = new Audio("/sounds/alert.mp3");
+  audio.currentTime = 0;
+  audio.volume = 0.8;
+
+  audio.play().catch(() => {
+    console.log("Som bloqueado pelo navegador até uma interação do usuário.");
+  });
+
+  if (navigator.vibrate) {
+    navigator.vibrate(200);
+  }
+}
+
 function badgeStyle(status) {
   const base = {
     display: "inline-block",
@@ -142,6 +156,8 @@ export default function App() {
   function handleImComing() {
     if (!selectedStudent) return;
 
+    playAlertSound();
+
     updateStudent(selectedStudent.id, {
       status: "a_caminho",
       responsible: parentResponsible || "Responsável",
@@ -155,6 +171,8 @@ export default function App() {
 
   function handleDelay() {
     if (!selectedStudent) return;
+
+    playAlertSound();
 
     updateStudent(selectedStudent.id, {
       status: "atrasado",
