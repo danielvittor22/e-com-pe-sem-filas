@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import logo from "./logo.png";
+
 const initialStudents = [
   {
     id: 1,
@@ -71,9 +72,9 @@ function badgeStyle(status) {
 function cardStyle() {
   return {
     background: "#fff",
-    borderRadius: 18,
+    borderRadius: 22,
     padding: 20,
-    boxShadow: "0 8px 24px rgba(15,23,42,0.08)",
+    boxShadow: "0 10px 28px rgba(15,23,42,0.08)",
     border: "1px solid #e5e7eb",
   };
 }
@@ -81,7 +82,7 @@ function cardStyle() {
 function buttonStyle(primary = true) {
   return {
     padding: "12px 16px",
-    borderRadius: 12,
+    borderRadius: 14,
     border: primary ? "none" : "1px solid #d1d5db",
     background: primary ? "#0f172a" : "#fff",
     color: primary ? "#fff" : "#111827",
@@ -117,6 +118,7 @@ export default function App() {
   const filteredStudents = useMemo(() => {
     const q = schoolSearch.trim().toLowerCase();
     if (!q) return students;
+
     return students.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
@@ -161,23 +163,18 @@ export default function App() {
   }
 
   function markArrived(id) {
-    updateStudent(id, {
-      status: "chegou",
-    });
+    updateStudent(id, { status: "chegou" });
   }
 
   function markPickedUp(id) {
-    updateStudent(id, {
-      status: "retirado",
-      eta: "",
-    });
+    updateStudent(id, { status: "retirado", eta: "" });
   }
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)",
+        background: "linear-gradient(180deg, #fff7fb 0%, #eef6ff 100%)",
         fontFamily: "Arial, sans-serif",
         color: "#0f172a",
       }}
@@ -191,14 +188,30 @@ export default function App() {
             flexWrap: "wrap",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: 16,
+            gap: 18,
           }}
         >
-          <div>
-            <h1 style={{ margin: 0, fontSize: 36 }}>📲 Pé com Pé sem filas</h1>
-            <p style={{ margin: "8px 0 0", color: "#475569" }}>
-              App dos pais + painel da escola
-            </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <img
+              src={logo}
+              alt="BuscaFácil"
+              style={{
+                width: 82,
+                height: 82,
+                objectFit: "contain",
+                borderRadius: 18,
+                background: "#fff",
+              }}
+            />
+
+            <div>
+              <h1 style={{ margin: 0, fontSize: 38, color: "#0f172a" }}>
+                BuscaFácil
+              </h1>
+              <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 16 }}>
+                Transporte escolar com segurança e tranquilidade
+              </p>
+            </div>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -221,19 +234,19 @@ export default function App() {
         >
           <div style={cardStyle()}>
             <div style={{ color: "#64748b", fontSize: 14 }}>Alunos monitorados</div>
-            <div style={{ fontSize: 28, fontWeight: 700, marginTop: 8 }}>{metrics.total}</div>
+            <div style={{ fontSize: 30, fontWeight: 800, marginTop: 8 }}>{metrics.total}</div>
           </div>
           <div style={cardStyle()}>
             <div style={{ color: "#64748b", fontSize: 14 }}>A caminho</div>
-            <div style={{ fontSize: 28, fontWeight: 700, marginTop: 8 }}>{metrics.a_caminho}</div>
+            <div style={{ fontSize: 30, fontWeight: 800, marginTop: 8 }}>{metrics.a_caminho}</div>
           </div>
           <div style={cardStyle()}>
             <div style={{ color: "#64748b", fontSize: 14 }}>Chegaram</div>
-            <div style={{ fontSize: 28, fontWeight: 700, marginTop: 8 }}>{metrics.chegou}</div>
+            <div style={{ fontSize: 30, fontWeight: 800, marginTop: 8 }}>{metrics.chegou}</div>
           </div>
           <div style={cardStyle()}>
             <div style={{ color: "#64748b", fontSize: 14 }}>Retirados</div>
-            <div style={{ fontSize: 28, fontWeight: 700, marginTop: 8 }}>{metrics.retirado}</div>
+            <div style={{ fontSize: 30, fontWeight: 800, marginTop: 8 }}>{metrics.retirado}</div>
           </div>
         </div>
 
@@ -293,7 +306,7 @@ export default function App() {
 
               <div style={{ marginTop: 16 }}>
                 <label style={{ fontWeight: 700, display: "block", marginBottom: 8 }}>
-                  Placa do veículo
+                  Placa do veículo ou van
                 </label>
                 <input
                   value={parentPlate}
@@ -378,30 +391,18 @@ export default function App() {
               <h2 style={{ marginTop: 0 }}>Resumo do aluno</h2>
               {selectedStudent && (
                 <>
-                  <p>
-                    <strong>Nome:</strong> {selectedStudent.name}
-                  </p>
-                  <p>
-                    <strong>Turma:</strong> {selectedStudent.className}
-                  </p>
-                  <p>
-                    <strong>Responsável:</strong> {selectedStudent.responsible}
-                  </p>
-                  <p>
-                    <strong>Placa:</strong> {selectedStudent.plate || "—"}
-                  </p>
+                  <p><strong>Nome:</strong> {selectedStudent.name}</p>
+                  <p><strong>Turma:</strong> {selectedStudent.className}</p>
+                  <p><strong>Responsável:</strong> {selectedStudent.responsible}</p>
+                  <p><strong>Placa:</strong> {selectedStudent.plate || "—"}</p>
                   <p>
                     <strong>Status:</strong>{" "}
                     <span style={badgeStyle(selectedStudent.status)}>
                       {statusLabel[selectedStudent.status]}
                     </span>
                   </p>
-                  <p>
-                    <strong>Última atualização:</strong> {selectedStudent.updatedAt}
-                  </p>
-                  <p>
-                    <strong>Previsão:</strong> {selectedStudent.eta || "—"}
-                  </p>
+                  <p><strong>Última atualização:</strong> {selectedStudent.updatedAt}</p>
+                  <p><strong>Previsão:</strong> {selectedStudent.eta || "—"}</p>
                 </>
               )}
             </div>
@@ -430,7 +431,7 @@ export default function App() {
                 onChange={(e) => setSchoolSearch(e.target.value)}
                 placeholder="Buscar aluno, turma, responsável ou placa"
                 style={{
-                  width: 320,
+                  width: 340,
                   maxWidth: "100%",
                   padding: 12,
                   borderRadius: 12,
@@ -446,7 +447,7 @@ export default function App() {
                   key={student.id}
                   style={{
                     border: "1px solid #e5e7eb",
-                    borderRadius: 16,
+                    borderRadius: 18,
                     padding: 16,
                     background: "#fff",
                     display: "grid",
@@ -462,7 +463,7 @@ export default function App() {
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 18 }}>{student.name}</div>
+                      <div style={{ fontWeight: 800, fontSize: 18 }}>{student.name}</div>
                       <div style={{ color: "#64748b", marginTop: 4 }}>
                         {student.className}
                       </div>
@@ -488,16 +489,10 @@ export default function App() {
                   </div>
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button
-                      style={buttonStyle(false)}
-                      onClick={() => markArrived(student.id)}
-                    >
+                    <button style={buttonStyle(false)} onClick={() => markArrived(student.id)}>
                       Marcar chegada
                     </button>
-                    <button
-                      style={buttonStyle(true)}
-                      onClick={() => markPickedUp(student.id)}
-                    >
+                    <button style={buttonStyle(true)} onClick={() => markPickedUp(student.id)}>
                       Confirmar retirada
                     </button>
                   </div>
