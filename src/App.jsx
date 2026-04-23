@@ -11,6 +11,7 @@ const initialStudents = [
     plate: "",
     eta: "",
     updatedAt: "--:--",
+    alert: false,
   },
   {
     id: 2,
@@ -21,6 +22,7 @@ const initialStudents = [
     plate: "BRA2E19",
     eta: "10 min",
     updatedAt: "17:05",
+    alert: true,
   },
   {
     id: 3,
@@ -31,6 +33,7 @@ const initialStudents = [
     plate: "XYZ-1234",
     eta: "",
     updatedAt: "16:58",
+    alert: false,
   },
 ];
 
@@ -144,6 +147,7 @@ export default function App() {
       responsible: parentResponsible || "Responsável",
       plate: parentPlate,
       eta: "Chegando agora",
+      alert: true,
     });
 
     alert("Aviso enviado para a escola.");
@@ -157,17 +161,25 @@ export default function App() {
       responsible: parentResponsible || "Responsável",
       plate: parentPlate,
       eta: delayMinutes,
+      alert: true,
     });
 
     alert(`Atraso informado${delayNote ? `: ${delayNote}` : "."}`);
   }
 
   function markArrived(id) {
-    updateStudent(id, { status: "chegou" });
+    updateStudent(id, {
+      status: "chegou",
+      alert: false,
+    });
   }
 
   function markPickedUp(id) {
-    updateStudent(id, { status: "retirado", eta: "" });
+    updateStudent(id, {
+      status: "retirado",
+      eta: "",
+      alert: false,
+    });
   }
 
   return (
@@ -446,14 +458,29 @@ export default function App() {
                 <div
                   key={student.id}
                   style={{
-                    border: "1px solid #e5e7eb",
+                    border: student.alert ? "2px solid #2563eb" : "1px solid #e5e7eb",
                     borderRadius: 18,
                     padding: 16,
-                    background: "#fff",
+                    background: student.alert ? "#eef6ff" : "#fff",
                     display: "grid",
                     gap: 12,
+                    boxShadow: student.alert
+                      ? "0 12px 30px rgba(37,99,235,0.18)"
+                      : "none",
                   }}
                 >
+                  {student.alert && (
+                    <div
+                      style={{
+                        color: "#2563eb",
+                        fontWeight: 800,
+                        fontSize: 15,
+                      }}
+                    >
+                      🚗 Chegando agora! Atenção na portaria.
+                    </div>
+                  )}
+
                   <div
                     style={{
                       display: "flex",
