@@ -7,8 +7,6 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 
-const alertSound = new Audio("/sounds/alert.mp3");
-
 export default function App() {
   const [students, setStudents] = useState([]);
   const [view, setView] = useState("pais");
