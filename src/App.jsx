@@ -1,474 +1,317 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { addDoc, collection, getDocs, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
-import logo from "./logo.png";
 
-function nowTime() {
-  return new Date().toLocaleTimeString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function playSound() {
-  if (typeof window === "undefined") return;
-
-  const audio = new Audio("/sounds/alert.mp3");
-  audio.volume = 0.8;
-  audio.play().catch(() => {});
-
-  if (navigator.vibrate) {
-    navigator.vibrate(200);
-  }
-}
-
-const statusLabel = {
-  aguardando: "Aguardando",
-  "a caminho": "A caminho",
-  chegou: "Chegou",
-  retirado: "Retirado",
-  atrasado: "Atrasado",
+const defaultConfig = {
+  schoolLat: "-23.55052",
+  schoolLng: "-46.633308",
+  schoolRadiusMeters: "150",
+  adminPin: "1234",
 };
 
-function badgeStyle(status) {
-  const map = {
-    aguardando: { background: "#e5e7eb", color: "#111827" },
-    "a caminho": { background: "#dbeafe", color: "#1d4ed8" },
-    chegou: { background: "#fef3c7", color: "#92400e" },
-    retirado: { background: "#dcfce7", color: "#166534" },
-    atrasado: { background: "#fee2e2", color: "#b91c1c" },
-  };
+const defaultChecklist = {
+  config_done: false,
+  team_done: false,
+  test_done: false,
+  export_done: false,
+};
 
-  return {
-    display: "inline-block",
-    padding: "6px 12px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-    ...(map[status] || map.aguardando),
-  };
-}
+const punchTypes = [
+  { value: "entrada", label: "Entrada" },
+  { value: "saida_intervalo", label: "Saída intervalo" },
+  { value: "volta_intervalo", label: "Volta intervalo" },
+  { value: "saida", label: "Saída" },
+];
 
 function cardStyle() {
-  return {
-    background: "#fff",
-    borderRadius: 22,
-    padding: 20,
-    boxShadow: "0 10px 28px rgba(15,23,42,0.08)",
-    border: "1px solid #e5e7eb",
-  };
+  return { background: "#fff", borderRadius: 16, padding: 18, border: "1px solid #e2e8f0" };
 }
 
 function buttonStyle(primary = true) {
   return {
-    padding: "12px 16px",
-    borderRadius: 14,
-    border: primary ? "none" : "1px solid #d1d5db",
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: primary ? "none" : "1px solid #cbd5e1",
     background: primary ? "#0f172a" : "#fff",
-    color: primary ? "#fff" : "#111827",
+    color: primary ? "#fff" : "#0f172a",
     fontWeight: 700,
     cursor: "pointer",
   };
 }
 
+function inputStyle() {
+  return { padding: 10, borderRadius: 10, border: "1px solid #cbd5e1", boxSizing: "border-box", width: "100%" };
+}
+
+function toRad(v) { return (v * Math.PI) / 180; }
+
+function distanceInMeters(origin, current) {
+  const R = 6371000;
+  const dLat = toRad(current.lat - origin.lat);
+  const dLng = toRad(current.lng - origin.lng);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(origin.lat)) * Math.cos(toRad(current.lat)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export default function App() {
-  const [students, setStudents] = useState([]);
-  const [tab, setTab] = useState("pais");
-  const [selectedId, setSelectedId] = useState("");
-  const [responsible, setResponsible] = useState("");
-  const [plate, setPlate] = useState("");
-  const [schoolSearch, setSchoolSearch] = useState("");
+  const [employees, setEmployees] = useState([]);
+  const [records, setRecords] = useState([]);
+  const [employeeId, setEmployeeId] = useState("");
+  const [punchType, setPunchType] = useState("entrada");
+  const [message, setMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [loadingLocation, setLoadingLocation] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [newEmployeeName, setNewEmployeeName] = useState("");
+  const [newEmployeeRole, setNewEmployeeRole] = useState("");
+  const [pin, setPin] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [config, setConfig] = useState(defaultConfig);
+  const [checklist, setChecklist] = useState(defaultChecklist);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "students"), (snapshot) => {
-      const data = snapshot.docs.map((item) => ({
-        id: item.id,
-        ...item.data(),
-      }));
+    const saved = localStorage.getItem("ponto_escola_config");
+    if (saved) {
+      try {
+        setConfig({ ...defaultConfig, ...JSON.parse(saved) });
+      } catch {
+        setConfig(defaultConfig);
+      }
+    }
 
-      setStudents(data);
-    });
-
-    return () => unsubscribe();
+    const savedChecklist = localStorage.getItem("ponto_escola_checklist");
+    if (savedChecklist) {
+      try {
+        setChecklist({ ...defaultChecklist, ...JSON.parse(savedChecklist) });
+      } catch {
+        setChecklist(defaultChecklist);
+      }
+    }
   }, []);
 
-  const selectedStudent = students.find((s) => s.id === selectedId);
+  useEffect(() => {
+    const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
+      setEmployees(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+      setLoadError("");
+    }, (error) => setLoadError(error?.message || "Erro ao carregar funcionários."));
 
-  const metrics = useMemo(() => {
-    return {
-      total: students.length,
-      caminho: students.filter((s) => s.status === "a caminho").length,
-      chegou: students.filter((s) => s.status === "chegou").length,
-      retirado: students.filter((s) => s.status === "retirado").length,
-    };
-  }, [students]);
+    const unsubRecords = onSnapshot(collection(db, "timeRecords"), (snapshot) => {
+      const data = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+      data.sort((a, b) => (b.createdAt?.toDate?.()?.getTime?.() || 0) - (a.createdAt?.toDate?.()?.getTime?.() || 0));
+      setRecords(data);
+      setLoadError("");
+    }, (error) => setLoadError(error?.message || "Erro ao carregar marcações."));
 
-  const filteredStudents = useMemo(() => {
-    const q = schoolSearch.trim().toLowerCase();
+    return () => { unsubEmployees(); unsubRecords(); };
+  }, []);
 
-    if (!q) return students;
+  useEffect(() => {
+    if (!employeeId && employees.length > 0) setEmployeeId(employees[0].id);
+  }, [employeeId, employees]);
 
-    return students.filter((s) => {
-      return (
-        (s.name || "").toLowerCase().includes(q) ||
-        (s.className || "").toLowerCase().includes(q) ||
-        (s.pickupBy || "").toLowerCase().includes(q) ||
-        (s.plate || "").toLowerCase().includes(q) ||
-        (s.code || "").toLowerCase().includes(q)
-      );
-    });
-  }, [students, schoolSearch]);
+  const todayRecords = useMemo(() => {
+    const today = new Date().toLocaleDateString("pt-BR");
+    return records.filter((record) => record.createdAt?.toDate?.()?.toLocaleDateString("pt-BR") === today);
+  }, [records]);
 
-  async function updateStudent(id, updates) {
-    const studentRef = doc(db, "students", id);
+  const schoolCenter = {
+    lat: Number(config.schoolLat),
+    lng: Number(config.schoolLng),
+  };
+  const schoolRadiusMeters = Number(config.schoolRadiusMeters);
 
-    await updateDoc(studentRef, {
-      ...updates,
-      time: nowTime(),
-    });
+  async function getCurrentLocation() {
+    if (!navigator.geolocation) throw new Error("Geolocalização não disponível neste dispositivo.");
+    setLoadingLocation(true);
+    try {
+      const position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }));
+      return { lat: position.coords.latitude, lng: position.coords.longitude };
+    } finally { setLoadingLocation(false); }
   }
 
-  async function handleImComing(student) {
-    await updateStudent(student.id, {
-      status: "a caminho",
-      pickupBy: responsible || student.pickupBy || "Responsável a caminho",
-      plate: plate || student.plate || "",
-      alert: true,
-    });
+  async function registerPunch() {
+    setMessage("");
+    const employee = employees.find((item) => item.id === employeeId);
+    if (!employee) return setMessage("Selecione um funcionário.");
+    if (!Number.isFinite(schoolCenter.lat) || !Number.isFinite(schoolCenter.lng) || !Number.isFinite(schoolRadiusMeters)) {
+      return setMessage("Configuração de escola inválida. Ajuste latitude, longitude e raio.");
+    }
 
-    playSound();
+    try {
+      const location = await getCurrentLocation();
+      const distance = distanceInMeters(schoolCenter, location);
+      if (distance > schoolRadiusMeters) return setMessage(`Fora da escola (${distance}m). Ponto não liberado.`);
+      await addDoc(collection(db, "timeRecords"), { employeeId: employee.id, employeeName: employee.name, type: punchType, location, distance, createdAt: serverTimestamp() });
+      setMessage(`Ponto registrado com sucesso (${distance}m da escola).`);
+    } catch (error) { setMessage(error?.message || "Não foi possível registrar o ponto."); }
   }
 
-  async function markArrived(id) {
-    await updateStudent(id, {
-      status: "chegou",
-      alert: false,
-    });
-
-    playSound();
+  function saveConfig() {
+    localStorage.setItem("ponto_escola_config", JSON.stringify(config));
+    setMessage("Configurações salvas neste navegador.");
   }
 
-  async function markPickedUp(id) {
-    await updateStudent(id, {
-      status: "retirado",
-      alert: false,
-    });
+  function updateChecklistItem(key) {
+    const next = { ...checklist, [key]: !checklist[key] };
+    setChecklist(next);
+    localStorage.setItem("ponto_escola_checklist", JSON.stringify(next));
+  }
 
-    playSound();
+  function checklistProgress() {
+    const total = Object.keys(checklist).length;
+    const done = Object.values(checklist).filter(Boolean).length;
+    return `${done}/${total}`;
+  }
+
+  async function seedDefaultEmployees() {
+    setSeeding(true); setMessage("");
+    try {
+      const snapshot = await getDocs(collection(db, "employees"));
+      if (!snapshot.empty) return setMessage("Já existem funcionários cadastrados.");
+      const defaults = ["Ana Souza", "Bruno Lima", "Carla Mendes", "Daniel Rocha", "Elisa Martins", "Felipe Nunes", "Gisele Alves", "Hugo Pereira"];
+      await Promise.all(defaults.map((name) => addDoc(collection(db, "employees"), { name, role: "Equipe", active: true, createdAt: serverTimestamp() })));
+      setMessage("8 funcionários padrão cadastrados com sucesso.");
+    } catch (error) { setMessage(error?.message || "Erro ao cadastrar funcionários padrão."); }
+    finally { setSeeding(false); }
+  }
+
+  async function addEmployee() {
+    if (!newEmployeeName.trim()) return setMessage("Informe o nome do funcionário.");
+    try {
+      await addDoc(collection(db, "employees"), { name: newEmployeeName.trim(), role: newEmployeeRole.trim() || "Equipe", active: true, createdAt: serverTimestamp() });
+      setNewEmployeeName(""); setNewEmployeeRole(""); setMessage("Funcionário cadastrado com sucesso.");
+    } catch (error) { setMessage(error?.message || "Erro ao cadastrar funcionário."); }
+  }
+
+  function exportMonthlyReport() {
+    const month = new Date().toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" }).replace("/", "-");
+    const rows = records
+      .filter((record) => {
+        const date = record.createdAt?.toDate?.();
+        const now = new Date();
+        return date && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+      })
+      .map((record) => [record.employeeName, record.type, formatDate(record.createdAt?.toDate?.()), record.distance ?? ""]);
+    if (rows.length === 0) return setMessage("Sem registros neste mês para exportar.");
+    downloadCsv(`relatorio-ponto-${month}.csv`, [["Funcionário", "Tipo", "Data/Hora", "Distância(m)"], ...rows]);
+    setMessage("Relatório mensal exportado em CSV.");
+  }
+
+  function unlockAdmin() {
+    if (pin === config.adminPin) {
+      setIsAdmin(true);
+      setPin("");
+      setMessage("Acesso administrativo liberado.");
+      return;
+    }
+    setMessage("PIN administrativo inválido.");
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "linear-gradient(180deg, #fff7fb 0%, #eef6ff 100%)",
-        fontFamily: "Arial, sans-serif",
-        color: "#0f172a",
-      }}
-    >
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: 20 }}>
-        <div
-          style={{
-            ...cardStyle(),
-            marginBottom: 20,
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 18,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <img
-              src={logo}
-              alt="BuscaFácil"
-              style={{
-                width: 82,
-                height: 82,
-                objectFit: "contain",
-                borderRadius: 18,
-                background: "#fff",
-              }}
-            />
+    <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: "Arial, sans-serif" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: 20 }}>
+        <div style={{ ...cardStyle(), marginBottom: 16 }}>
+          <h1 style={{ margin: 0 }}>Ponto Escola</h1>
+          <p style={{ margin: "6px 0 0", color: "#475569" }}>Aplicativo de ponto com configuração manual da escola</p>
+        </div>
 
-            <div>
-              <h1 style={{ margin: 0, fontSize: 38 }}>BuscaFácil</h1>
-              <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 16 }}>
-                Transporte escolar com segurança e tranquilidade
-              </p>
-            </div>
+        <div style={cardStyle()}>
+          <h2 style={{ marginTop: 0 }}>Registrar ponto</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+            <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} style={inputStyle()}>
+              {employees.length === 0 && <option value="">Nenhum funcionário cadastrado</option>}
+              {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+            </select>
+            <select value={punchType} onChange={(e) => setPunchType(e.target.value)} style={inputStyle()}>
+              {punchTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
           </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button style={buttonStyle(tab === "pais")} onClick={() => setTab("pais")}>
-              Área dos pais
+          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+            <button disabled={loadingLocation} onClick={registerPunch} style={{ ...buttonStyle(true), opacity: loadingLocation ? 0.6 : 1 }}>
+              {loadingLocation ? "Validando localização..." : "Bater ponto"}
             </button>
-            <button style={buttonStyle(tab === "escola")} onClick={() => setTab("escola")}>
-              Painel da escola
+            <button disabled={seeding} onClick={seedDefaultEmployees} style={{ ...buttonStyle(false), opacity: seeding ? 0.6 : 1 }}>
+              {seeding ? "Cadastrando..." : "Cadastrar 8 funcionários padrão"}
             </button>
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: 16,
-            marginBottom: 20,
-          }}
-        >
-          <div style={cardStyle()}>
-            <div style={{ color: "#64748b", fontSize: 14 }}>Alunos monitorados</div>
-            <div style={{ fontSize: 30, fontWeight: 800, marginTop: 8 }}>{metrics.total}</div>
-          </div>
+        <div style={{ ...cardStyle(), marginTop: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Acesso administrativo</h2>
+          {!isAdmin ? (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <input value={pin} onChange={(e) => setPin(e.target.value)} placeholder="PIN administrativo" style={{ ...inputStyle(), maxWidth: 240 }} />
+              <button onClick={unlockAdmin} style={buttonStyle(true)}>Entrar no administrativo</button>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <h3 style={{ margin: 0 }}>Painel administrativo</h3>
+                <button onClick={exportMonthlyReport} style={buttonStyle(false)}>Exportar relatório mensal (CSV)</button>
+              </div>
 
-          <div style={cardStyle()}>
-            <div style={{ color: "#64748b", fontSize: 14 }}>A caminho</div>
-            <div style={{ fontSize: 30, fontWeight: 800, marginTop: 8 }}>{metrics.caminho}</div>
-          </div>
+              <div style={{ ...cardStyle(), marginTop: 12 }}>
+                <h4 style={{ marginTop: 0 }}>Checklist de implantação manual ({checklistProgress()})</h4>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label><input type="checkbox" checked={checklist.config_done} onChange={() => updateChecklistItem("config_done")} /> Configurar latitude, longitude, raio e PIN</label>
+                  <label><input type="checkbox" checked={checklist.team_done} onChange={() => updateChecklistItem("team_done")} /> Cadastrar os funcionários da escola</label>
+                  <label><input type="checkbox" checked={checklist.test_done} onChange={() => updateChecklistItem("test_done")} /> Testar batida de ponto dentro da escola</label>
+                  <label><input type="checkbox" checked={checklist.export_done} onChange={() => updateChecklistItem("export_done")} /> Exportar primeiro relatório CSV do mês</label>
+                </div>
+              </div>
 
-          <div style={cardStyle()}>
-            <div style={{ color: "#64748b", fontSize: 14 }}>Chegaram</div>
-            <div style={{ fontSize: 30, fontWeight: 800, marginTop: 8 }}>{metrics.chegou}</div>
-          </div>
+              <div style={{ ...cardStyle(), marginTop: 12 }}>
+                <h4 style={{ marginTop: 0 }}>Configuração manual</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                  <input value={config.schoolLat} onChange={(e) => setConfig((prev) => ({ ...prev, schoolLat: e.target.value }))} placeholder="Latitude da escola" style={inputStyle()} />
+                  <input value={config.schoolLng} onChange={(e) => setConfig((prev) => ({ ...prev, schoolLng: e.target.value }))} placeholder="Longitude da escola" style={inputStyle()} />
+                  <input value={config.schoolRadiusMeters} onChange={(e) => setConfig((prev) => ({ ...prev, schoolRadiusMeters: e.target.value }))} placeholder="Raio em metros" style={inputStyle()} />
+                  <input value={config.adminPin} onChange={(e) => setConfig((prev) => ({ ...prev, adminPin: e.target.value }))} placeholder="PIN admin" style={inputStyle()} />
+                </div>
+                <button onClick={saveConfig} style={{ ...buttonStyle(true), marginTop: 10 }}>Salvar configurações</button>
+              </div>
 
-          <div style={cardStyle()}>
-            <div style={{ color: "#64748b", fontSize: 14 }}>Retirados</div>
-            <div style={{ fontSize: 30, fontWeight: 800, marginTop: 8 }}>{metrics.retirado}</div>
-          </div>
+              <div style={{ ...cardStyle(), marginTop: 12 }}>
+                <h4 style={{ marginTop: 0 }}>Cadastrar funcionário</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: 10 }}>
+                  <input value={newEmployeeName} onChange={(e) => setNewEmployeeName(e.target.value)} placeholder="Nome completo" style={inputStyle()} />
+                  <input value={newEmployeeRole} onChange={(e) => setNewEmployeeRole(e.target.value)} placeholder="Cargo" style={inputStyle()} />
+                  <button onClick={addEmployee} style={buttonStyle(true)}>Adicionar</button>
+                </div>
+              </div>
+
+              <p><strong>Funcionários cadastrados:</strong> {employees.length} | <strong>Com ponto hoje:</strong> {new Set(todayRecords.map((r) => r.employeeId)).size}</p>
+              <div style={{ display: "grid", gap: 8 }}>
+                {records.slice(0, 12).map((record) => (
+                  <div key={record.id} style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 10 }}>
+                    <strong>{record.employeeName}</strong> • {record.type} • {formatDate(record.createdAt?.toDate?.())}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
-        {tab === "pais" ? (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-              gap: 20,
-            }}
-          >
-            <div style={cardStyle()}>
-              <h2 style={{ marginTop: 0 }}>Área dos pais</h2>
-              <p style={{ color: "#475569" }}>
-                Avise a escola que está a caminho.
-              </p>
-
-              <div style={{ marginTop: 16 }}>
-                <label style={{ fontWeight: 700, display: "block", marginBottom: 8 }}>
-                  Aluno
-                </label>
-                <select
-                  value={selectedId}
-                  onChange={(e) => setSelectedId(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: 12,
-                    borderRadius: 12,
-                    border: "1px solid #d1d5db",
-                  }}
-                >
-                  <option value="">Selecione o aluno</option>
-                  {students.map((student) => (
-                    <option key={student.id} value={student.id}>
-                      {student.name} • {student.className || "Turma não informada"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginTop: 16 }}>
-                <label style={{ fontWeight: 700, display: "block", marginBottom: 8 }}>
-                  Quem vai buscar
-                </label>
-                <input
-                  value={responsible}
-                  onChange={(e) => setResponsible(e.target.value)}
-                  placeholder="Ex.: Pai, mãe, avó ou van"
-                  style={{
-                    width: "100%",
-                    padding: 12,
-                    borderRadius: 12,
-                    border: "1px solid #d1d5db",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-
-              <div style={{ marginTop: 16 }}>
-                <label style={{ fontWeight: 700, display: "block", marginBottom: 8 }}>
-                  Placa do veículo ou van
-                </label>
-                <input
-                  value={plate}
-                  onChange={(e) => setPlate(e.target.value.toUpperCase())}
-                  placeholder="ABC-1234 ou ABC1D23"
-                  style={{
-                    width: "100%",
-                    padding: 12,
-                    borderRadius: 12,
-                    border: "1px solid #d1d5db",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-
-              <button
-                onClick={() => {
-                  if (!selectedStudent) {
-                    alert("Selecione um aluno.");
-                    return;
-                  }
-
-                  handleImComing(selectedStudent);
-                }}
-                style={{
-                  ...buttonStyle(true),
-                  width: "100%",
-                  marginTop: 20,
-                  minHeight: 72,
-                  fontSize: 18,
-                }}
-              >
-                🚗 Estou chegando
-              </button>
-            </div>
-
-            <div style={cardStyle()}>
-              <h2 style={{ marginTop: 0 }}>Resumo do aluno</h2>
-
-              {selectedStudent ? (
-                <>
-                  <p><strong>Nome:</strong> {selectedStudent.name}</p>
-                  <p><strong>Turma:</strong> {selectedStudent.className || "—"}</p>
-                  <p><strong>Código:</strong> {selectedStudent.code || "—"}</p>
-                  <p><strong>Responsável:</strong> {selectedStudent.pickupBy || "—"}</p>
-                  <p><strong>Placa:</strong> {selectedStudent.plate || "—"}</p>
-                  <p>
-                    <strong>Status:</strong>{" "}
-                    <span style={badgeStyle(selectedStudent.status)}>
-                      {statusLabel[selectedStudent.status] || selectedStudent.status || "—"}
-                    </span>
-                  </p>
-                  <p><strong>Atualizado às:</strong> {selectedStudent.time || "—"}</p>
-                </>
-              ) : (
-                <p style={{ color: "#64748b" }}>Selecione um aluno para ver o resumo.</p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div style={cardStyle()}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-                flexWrap: "wrap",
-                alignItems: "center",
-                marginBottom: 16,
-              }}
-            >
-              <div>
-                <h2 style={{ margin: 0 }}>Painel da escola</h2>
-                <p style={{ margin: "8px 0 0", color: "#475569" }}>
-                  Acompanhe em tempo real quem está a caminho, chegou ou já foi retirado.
-                </p>
-              </div>
-
-              <input
-                value={schoolSearch}
-                onChange={(e) => setSchoolSearch(e.target.value)}
-                placeholder="Buscar aluno, turma, responsável ou placa"
-                style={{
-                  width: 340,
-                  maxWidth: "100%",
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid #d1d5db",
-                  boxSizing: "border-box",
-                }}
-              />
-            </div>
-
-            <div style={{ display: "grid", gap: 16 }}>
-              {filteredStudents.map((student) => (
-                <div
-                  key={student.id}
-                  style={{
-                    border: student.alert ? "2px solid #2563eb" : "1px solid #e5e7eb",
-                    borderRadius: 18,
-                    padding: 16,
-                    background: student.alert ? "#eef6ff" : "#fff",
-                    display: "grid",
-                    gap: 12,
-                    boxShadow: student.alert
-                      ? "0 12px 30px rgba(37,99,235,0.18)"
-                      : "none",
-                  }}
-                >
-                  {student.alert && (
-                    <div style={{ color: "#2563eb", fontWeight: 800, fontSize: 15 }}>
-                      🚗 Chegando agora! Atenção na portaria.
-                    </div>
-                  )}
-
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 800, fontSize: 18 }}>
-                        {student.name}
-                      </div>
-                      <div style={{ color: "#64748b", marginTop: 4 }}>
-                        {student.className || "Turma não informada"} • {student.code || "Sem código"}
-                      </div>
-                    </div>
-
-                    <span style={badgeStyle(student.status)}>
-                      {statusLabel[student.status] || student.status || "—"}
-                    </span>
-                  </div>
-
-                  <div style={{ color: "#334155" }}>
-                    <strong>Responsável:</strong> {student.pickupBy || "—"}
-                  </div>
-
-                  <div style={{ color: "#334155" }}>
-                    <strong>Parentesco:</strong> {student.relationship || "—"}
-                  </div>
-
-                  <div style={{ color: "#334155" }}>
-                    <strong>Placa:</strong> {student.plate || "—"}
-                  </div>
-
-                  <div style={{ color: "#334155" }}>
-                    <strong>Atualizado às:</strong> {student.time || "—"}
-                  </div>
-
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button style={buttonStyle(false)} onClick={() => markArrived(student.id)}>
-                      Marcar chegada
-                    </button>
-
-                    <button style={buttonStyle(true)} onClick={() => markPickedUp(student.id)}>
-                      Confirmar retirada
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {filteredStudents.length === 0 && (
-                <div style={{ color: "#64748b", textAlign: "center", padding: 20 }}>
-                  Nenhum aluno encontrado.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {message && <p style={{ marginTop: 12, fontWeight: 700 }}>{message}</p>}
+        {loadError && <p style={{ marginTop: 4, color: "#b91c1c", fontWeight: 700 }}>Erro: {loadError}</p>}
       </div>
     </div>
   );
