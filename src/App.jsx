@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, getDocs, onSnapshot, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
 
 const defaultConfig = {
@@ -203,6 +203,22 @@ export default function App() {
     } catch (error) { setMessage(error?.message || "Erro ao cadastrar funcionário."); }
   }
 
+
+  async function removeEmployee(employee) {
+    const canDelete = window.confirm(`Remover ${employee.name}?`);
+    if (!canDelete) return;
+
+    try {
+      await deleteDoc(doc(db, "employees", employee.id));
+      setMessage(`Funcionário ${employee.name} removido.`);
+      if (employeeId === employee.id) {
+        setEmployeeId("");
+      }
+    } catch (error) {
+      setMessage(error?.message || "Erro ao remover funcionário.");
+    }
+  }
+
   function exportMonthlyReport() {
     const [year, month] = reportMonth.split("-").map(Number);
     const rows = records
@@ -313,6 +329,22 @@ export default function App() {
                   <input value={newEmployeeName} onChange={(e) => setNewEmployeeName(e.target.value)} placeholder="Nome completo" style={inputStyle()} />
                   <input value={newEmployeeRole} onChange={(e) => setNewEmployeeRole(e.target.value)} placeholder="Cargo" style={inputStyle()} />
                   <button onClick={addEmployee} style={buttonStyle(true)}>Adicionar</button>
+                </div>
+              </div>
+
+              <div style={{ ...cardStyle(), marginTop: 12 }}>
+                <h4 style={{ marginTop: 0 }}>Gerenciar funcionários</h4>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {employees.map((employee) => (
+                    <div key={employee.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 8, padding: 10 }}>
+                      <div>
+                        <strong>{employee.name}</strong>
+                        <div style={{ color: "#475569", fontSize: 13 }}>{employee.role || "Equipe"}</div>
+                      </div>
+                      <button onClick={() => removeEmployee(employee)} style={buttonStyle(false)}>Remover</button>
+                    </div>
+                  ))}
+                  {employees.length === 0 && <div style={{ color: "#64748b" }}>Nenhum funcionário cadastrado.</div>}
                 </div>
               </div>
 
