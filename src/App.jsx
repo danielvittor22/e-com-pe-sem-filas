@@ -86,6 +86,8 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [config, setConfig] = useState(defaultConfig);
   const [checklist, setChecklist] = useState(defaultChecklist);
+  const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [reportEmployee, setReportEmployee] = useState("todos");
 
   useEffect(() => {
     const saved = localStorage.getItem("ponto_escola_config");
@@ -202,17 +204,22 @@ export default function App() {
   }
 
   function exportMonthlyReport() {
-    const month = new Date().toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" }).replace("/", "-");
+    const [year, month] = reportMonth.split("-").map(Number);
     const rows = records
       .filter((record) => {
         const date = record.createdAt?.toDate?.();
-        const now = new Date();
-        return date && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+        if (!date) return false;
+        const sameMonth = date.getMonth() + 1 === month && date.getFullYear() === year;
+        const sameEmployee = reportEmployee === "todos" || record.employeeId === reportEmployee;
+        return sameMonth && sameEmployee;
       })
       .map((record) => [record.employeeName, record.type, formatDate(record.createdAt?.toDate?.()), record.distance ?? ""]);
-    if (rows.length === 0) return setMessage("Sem registros neste mês para exportar.");
-    downloadCsv(`relatorio-ponto-${month}.csv`, [["Funcionário", "Tipo", "Data/Hora", "Distância(m)"], ...rows]);
-    setMessage("Relatório mensal exportado em CSV.");
+
+    if (rows.length === 0) return setMessage("Sem registros para o filtro selecionado.");
+
+    const suffix = reportEmployee === "todos" ? "todos" : (employees.find((e) => e.id === reportEmployee)?.name || "funcionario");
+    downloadCsv(`relatorio-ponto-${reportMonth}-${suffix}.csv`, [["Funcionário", "Tipo", "Data/Hora", "Distância(m)"], ...rows]);
+    setMessage("Relatório exportado em CSV com os filtros selecionados.");
   }
 
   function unlockAdmin() {
@@ -265,7 +272,18 @@ export default function App() {
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                 <h3 style={{ margin: 0 }}>Painel administrativo</h3>
-                <button onClick={exportMonthlyReport} style={buttonStyle(false)}>Exportar relatório mensal (CSV)</button>
+                <button onClick={exportMonthlyReport} style={buttonStyle(false)}>Exportar relatório CSV</button>
+              </div>
+
+              <div style={{ ...cardStyle(), marginTop: 12 }}>
+                <h4 style={{ marginTop: 0 }}>Filtros do relatório</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                  <input type="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)} style={inputStyle()} />
+                  <select value={reportEmployee} onChange={(e) => setReportEmployee(e.target.value)} style={inputStyle()}>
+                    <option value="todos">Todos os funcionários</option>
+                    {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+                  </select>
+                </div>
               </div>
 
               <div style={{ ...cardStyle(), marginTop: 12 }}>
